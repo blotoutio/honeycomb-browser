@@ -1,13 +1,13 @@
 import { HoneycombWebSDK } from "@honeycombio/opentelemetry-web";
-import { getWebAutoInstrumentations } from "@opentelemetry/auto-instrumentations-web";
 import { trace } from "@opentelemetry/api";
 
 function initializeTracing(
-  params /* { apiKey: string, serviceName: string } */
+  params /* { apiKey: string, serviceName: string, debug: boolean } */
 ) {
   if (!params) {
     params = {};
   }
+
   if (!params.apiKey) {
     throw new Error(
       "Usage: initializeTracing({ apiKey: 'honeycomb api key', serviceName: 'name of this service' })"
@@ -20,40 +20,19 @@ function initializeTracing(
     params.serviceName = "unknown_service";
   }
 
-  const configDefaults = {
-    ignoreNetworkEvents: true,
-    // propagateTraceHeaderCorsUrls: [
-    // /.+/g, // Regex to match your backend URLs. Update to the domains you wish to include.
-    // ]
-  };
-
   const sdk = new HoneycombWebSDK({
-    // endpoint: "https://api.eu1.honeycomb.io/v1/traces", // Send to EU instance of Honeycomb. Defaults to sending to US instance.
     localVisualizations: params.debug,
-    instrumentations: [
-      getWebAutoInstrumentations({
-        // Loads custom configuration for xml-http-request instrumentation.
-        "@opentelemetry/instrumentation-xml-http-request": configDefaults,
-        "@opentelemetry/instrumentation-fetch": configDefaults,
-        "@opentelemetry/instrumentation-document-load": configDefaults,
-      }),
-    ],
     ...params,
   });
   sdk.start();
 
+  sendInitialPing();
+
   instrumentGlobalErrors();
-
-  if (params.debug) {
-    sendTestSpan();
-  }
-
-  // TODO: add the version of this library. Can i get parcel to import a json file?
-  console.log("Tracing initialized");
 }
 
 function instrumentGlobalErrors() {
-  const tracer = trace.getTracer("@jessitron/errors");
+  const tracer = trace.getTracer("errors");
   window.addEventListener("error", (e) => {
     const span = tracer.startSpan("Error on page");
     span.setAttributes({
@@ -68,9 +47,14 @@ function instrumentGlobalErrors() {
   });
 }
 
-function sendTestSpan() {
-  const span = trace.getTracer("test span").startSpan("test span");
-  console.log("Sending test span", span.spanContext());
+function sendInitialPing() {
+  const tracer = trace.getTracer("pageLoad")
+  const span = tracer.startSpan("Load");
+  span.setAttributes({
+    "page.url": window.location.href,
+    "page.referrer": document.referrer,
+    "page.title": document.title,
+  });
   span.end();
 }
 
